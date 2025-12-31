@@ -18,5 +18,5 @@ jobs:
         run: pip install "httpx[http2]" pandas requests
       - name: Execute Nifty Tracker
         run: |
-          python nifty_tracker.py
+          python nf_pre_market.py
           echo "Nifty 50 Pre-Market Bot executed successfully."
