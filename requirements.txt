@@ -1,0 +1,4 @@
+requests
+pandas
+nsepython
+httpx[http2]
