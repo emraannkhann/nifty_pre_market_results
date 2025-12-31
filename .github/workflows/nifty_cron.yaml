@@ -19,4 +19,4 @@ jobs:
       - name: Execute Nifty Tracker
         run: |
           python nf_pre_market.py
-          echo "Nifty 50 Pre-Market Bot executed successfully."
+          echo "Nifty 50 Pre-Market Bot executed successfully..!"
