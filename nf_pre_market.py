@@ -1,7 +1,9 @@
 import httpx
 import pandas as pd
 import os
+import time
 from datetime import datetime
+import pytz
 
 # --- CONFIGURATION ---
 TELEGRAM_CHAT_ID = "-806742105"
@@ -15,18 +17,46 @@ WEIGHTS = {
 
 def get_data(client, url):
     """Bypasses NSE session blocking and returns JSON."""
-    client.get("https://www.nseindia.com", timeout=10)
-    response = client.get(url, timeout=10)
-    if response.status_code != 200:
+    try:
+        # First hit the home page to get cookies
+        client.get("https://www.nseindia.com", timeout=10)
+        response = client.get(url, timeout=10)
+        if response.status_code != 200:
+            return None
+        return response.json()
+    except Exception as e:
+        print(f"Fetch Error: {e}")
         return None
-    return response.json()
 
 def send_telegram(message):
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {"chat_id": TELEGRAM_CHAT_ID, "text": message, "parse_mode": "HTML"}
-    httpx.post(url, data=payload)
+    try:
+        httpx.post(url, data=payload)
+    except Exception as e:
+        print(f"Telegram Error: {e}")
 
 def analyze():
+    IST = pytz.timezone("Asia/Kolkata")
+    
+    # --- WAIT LOOP ---
+    # We want the report at 9:11 AM IST
+    print("Pre-Market Script started. Monitoring time...")
+    while True:
+        now_ist = datetime.now(IST)
+        current_time = now_ist.strftime("%H:%M")
+        
+        if current_time >= "09:12":
+            print(f"Target time reached ({current_time}). Processing data...")
+            break
+        
+        # If GitHub starts this way too late (e.g., after 9:15), just run it immediately
+        if current_time > "09:15":
+            break
+            
+        print(f"Current time is {current_time}. Waiting for 09:11...")
+        time.sleep(30) # Check every 30 seconds
+
     # Headers to mimic a browser
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36",
@@ -34,10 +64,9 @@ def analyze():
         "Referer": "https://www.nseindia.com/"
     }
 
-    with httpx.Client(http2=True, headers=headers) as client:
+    with httpx.Client(http2=True, headers=headers, follow_redirects=True) as client:
         try:
-            # 1. Fetch Nifty IEP (Indicative Equilibrium Price) Change
-            # The 'allIndices' API is more reliable for the overall Index value
+            # 1. Fetch Nifty IEP Change
             indices_data = get_data(client, "https://www.nseindia.com/api/allIndices")
             nifty_iep_change = 0.0
             
@@ -52,7 +81,7 @@ def analyze():
             raw_stock_data = get_data(client, preopen_url)
             
             if not raw_stock_data or 'data' not in raw_stock_data:
-                raise Exception("Could not fetch pre-open stock data.")
+                raise Exception("NSE API busy or Pre-Open data not ready.")
 
             stocks = []
             for item in raw_stock_data['data']:
@@ -78,17 +107,17 @@ def analyze():
                     if "BANK" in symbol or symbol == "SBIN":
                         bank_report += f"🏦 {symbol}: {p_change}%\n"
 
-            # 4. Predict Market Direction
-            # Bullish if Nifty IEP > 0.4% AND our Top 10 sentiment is positive
-            if nifty_iep_change > 0.40 and weighted_sentiment > 0:
+            # 4. Predict Direction
+            if nifty_iep_change > 0.35 and weighted_sentiment > 0:
                 direction = "🚀 BULLISH"
-            elif nifty_iep_change < -0.40 and weighted_sentiment < 0:
+            elif nifty_iep_change < -0.35 and weighted_sentiment < 0:
                 direction = "🔻 BEARISH"
             else:
                 direction = "⚖️ SIDEWAYS / NEUTRAL"
 
             # 5. Build Message
-            msg = f"<b>📊 Pre-Market Report ({datetime.now().strftime('%d %b')})</b>\n"
+            runtime = datetime.now(IST).strftime('%H:%M:%S')
+            msg = f"<b>📊 Pre-Market Report ({datetime.now(IST).strftime('%d %b')})</b>\n"
             msg += f"<b>Market Sentiment: {direction}</b>\n\n"
             msg += f"<b>Nifty 50 IEP: {nifty_iep_change}%</b>\n"
             msg += f"<b>Top 10 Sentiment: {round(weighted_sentiment/10, 2)}%</b>\n\n"
@@ -102,14 +131,16 @@ def analyze():
                 msg += f"• {r['symbol']}: {r['pChange']}%\n"
             
             msg += f"\n<b>Banking Heavyweights:</b>\n{bank_report}"
-            msg += f"\n<i>Generated at 9:12 AM IST</i>"
+            msg += f"\n<b><i>Sent at {runtime} IST</i></b>"
 
             send_telegram(msg)
-            print("Successfully sent report.")
+            print(f"Successfully sent report at {runtime}")
 
         except Exception as e:
-            print(f"Error: {e}")
-            send_telegram(f"⚠️ Market Tracker Warning: {e}\n(NSE API might have returned an unexpected structure).")
+            error_msg = f"⚠️ Pre-Market Error: {str(e)}"
+            print(error_msg)
+            # Only send error if it's after 9:11 (to avoid spamming during retries)
+            send_telegram(error_msg)
 
 if __name__ == "__main__":
     analyze()
