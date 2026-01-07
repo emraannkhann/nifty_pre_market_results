@@ -39,23 +39,18 @@ def send_telegram(message):
 def analyze():
     IST = pytz.timezone("Asia/Kolkata")
     
-    # --- WAIT LOOP ---
-    # We want the report at 9:11 AM IST
-    print("Pre-Market Script started. Monitoring time...")
-    while True:
-        now_ist = datetime.now(IST)
-        current_time = now_ist.strftime("%H:%M")
-        
-        if current_time >= "09:12":
-            print(f"Target time reached ({current_time}). Processing data...")
-            break
-        
-        # If GitHub starts this way too late (e.g., after 9:15), just run it immediately
-        if current_time > "09:15":
-            break
-            
-        print(f"Current time is {current_time}. Waiting for 09:11...")
-        time.sleep(30) # Check every 30 seconds
+    # --- PRECISION WAIT LOOP ---
+    now_ist = datetime.now(IST)
+    target_time = now_ist.replace(hour=9, minute=12, second=5, microsecond=0)
+
+    # If the script starts and it's already past 9:15, run immediately
+    # If it's before 9:12, wait until exactly 9:12:05
+    if now_ist < target_time:
+        wait_seconds = (target_time - now_ist).total_seconds()
+        print(f"Current time: {now_ist.strftime('%H:%M:%S')}. Waiting {round(wait_seconds)} seconds until 09:12:05...")
+        time.sleep(wait_seconds)
+    elif now_ist > target_time.replace(minute=20): 
+        print(f"Script started very late at {now_ist.strftime('%H:%M:%S')}. Running immediately.")
 
     # Headers to mimic a browser
     headers = {
