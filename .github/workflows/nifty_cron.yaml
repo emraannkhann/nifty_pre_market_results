@@ -4,7 +4,7 @@ on:
   schedule:
     # 03:15 UTC = 08:45 AM IST
     # This triggers early to ensure it's running before the 9:11 AM target
-    - cron: '45 2 * * 1-5'
+    - cron: '35 2 * * 1-5'
   workflow_dispatch: # Allows you to run it manually for testing
 
 jobs:
